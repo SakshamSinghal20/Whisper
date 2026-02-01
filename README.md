@@ -244,3 +244,4 @@ MIT
 - [BIP-352: Silent Payments](https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki)
 - [BIP-340: Schnorr Signatures](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki)
 - [secp256k1 Rust Crate](https://docs.rs/secp256k1/)
+# Whisper
