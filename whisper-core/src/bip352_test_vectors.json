@@ -1,0 +1,48 @@
+[
+  {
+    "comment": "Basic single input, no label",
+    "scan_secret": "0101010101010101010101010101010101010101010101010101010101010101",
+    "spend_pubkey": "0202020202020202020202020202020202020202020202020202020202020202",
+    "inputs": [
+      {
+        "pubkey": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "is_taproot": true
+      }
+    ],
+    "expected_shared_secret": "placeholder_will_compute",
+    "expected_output": "placeholder_will_compute",
+    "label": null
+  },
+  {
+    "comment": "Multiple inputs accumulation",
+    "scan_secret": "0303030303030303030303030303030303030303030303030303030303030303",
+    "spend_pubkey": "0404040404040404040404040404040404040404040404040404040404040404",
+    "inputs": [
+      {
+        "pubkey": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "is_taproot": true
+      },
+      {
+        "pubkey": "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "is_taproot": true
+      }
+    ],
+    "expected_shared_secret": "placeholder_will_compute",
+    "expected_output": "placeholder_will_compute",
+    "label": null
+  },
+  {
+    "comment": "With label 5",
+    "scan_secret": "0505050505050505050505050505050505050505050505050505050505050505",
+    "spend_pubkey": "0606060606060606060606060606060606060606060606060606060606060606",
+    "inputs": [
+      {
+        "pubkey": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "is_taproot": true
+      }
+    ],
+    "expected_shared_secret": "placeholder_will_compute",
+    "expected_output": "placeholder_will_compute",
+    "label": 5
+  }
+]
