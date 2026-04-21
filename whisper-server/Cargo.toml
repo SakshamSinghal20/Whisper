@@ -15,7 +15,6 @@ zmq = "0.10"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = { workspace = true }
-tower-http = { version = "0.5", features = ["cors", "trace"] }
-config = "0.14"
+tower-http = { version = "0.5", features = ["cors", "trace", "fs", "set-header"] }
 bitcoin = { workspace = true }
 hex = "0.4"

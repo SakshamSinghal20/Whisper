@@ -21,6 +21,7 @@ pub struct ServerConfig {
     pub port: u16,
     pub max_block_range: i32,
     pub max_prefixes: usize,
+    pub cors_origin: String,
 }
 
 impl ServerConfig {
@@ -51,6 +52,8 @@ impl ServerConfig {
                 .unwrap_or_else(|_| "1000".into())
                 .parse()
                 .map_err(|e| ConfigError::Parse(format!("Invalid max_prefixes: {}", e)))?,
+            cors_origin: std::env::var("CORS_ORIGIN")
+                .unwrap_or_else(|_| "*".into()),
         })
     }
 }
