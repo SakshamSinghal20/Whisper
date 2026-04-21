@@ -1,247 +1,183 @@
-# Whisper — Silent Payments Light Indexer
+# Whisper
 
-A production-grade BIP-352 Silent Payments indexing service that enables light clients to detect Taproot-based silent payments without revealing scan keys to the server.
+> A privacy-preserving BIP-352 Silent Payments indexing service. Light clients detect Taproot-based silent payments without revealing scan keys to the server.
 
-## Features
+## Highlights
 
-- **Privacy-Preserving**: 4-byte prefix filtering provides 65,536-anonymity-set per query
-- **Efficient**: 99.9% bandwidth reduction vs full block download
-- **Real-time**: ZMQ-based block ingestion from Bitcoin Core
-- **Scalable**: PostgreSQL backend with optimized indexes
-- **Secure**: Server never learns scan secrets or spend secrets
+- **Privacy-Preserving** — 4-byte prefix filtering, 2³² anonymity set per query
+- **Efficient** — 99.9% bandwidth reduction vs full block download
+- **Real-time** — ZMQ-based block ingestion from Bitcoin Core
+- **Scalable** — PostgreSQL with optimized B-tree indexes
+- **Dashboard** — Built-in dark-themed admin UI at `http://localhost:3000`
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     CLIENT (Mobile/Rust)                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
-│  │ SPGenerator  │  │ SPScanner    │  │ FilterDownloader │  │
-│  │ (BIP-352)    │  │ (Verifier)   │  │ (REST Client)    │  │
-│  └──────────────┘  └──────────────┘  └──────────────────┘  │
-└────────────────────┬────────────────────────────────────────┘
-                     │ HTTPS
-                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      WHISPER SERVER                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
-│  │ BlockParser  │  │ PrefixIndex  │  │ API (Axum)       │  │
-│  │ (ZMQ/RPC)    │  │ (PostgreSQL) │  │ REST             │  │
-│  └──────────────┘  └──────────────┘  └──────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                     │
-                     ▼
-              ┌──────────────┐
-              │  Bitcoin Core│
-              │  (bitcoind)  │
-              │  + ZMQ       │
-              └──────────────┘
+┌──────────────────────┐
+│   Client (Rust/FFI)  │   Local ECDH verification
+│   Prefix Generation  │   Server never sees secrets
+└──────────┬───────────┘
+           │ HTTPS
+┌──────────▼───────────┐
+│   Whisper Server     │   Axum REST API
+│   PostgreSQL Index   │   Prefix-based queries
+└──────────┬───────────┘
+           │ ZMQ
+┌──────────▼───────────┐
+│   Bitcoin Core       │   Raw block notifications
+│   + txindex + ZMQ    │   Taproot output extraction
+└──────────────────────┘
 ```
 
 ## Quick Start
 
-### Prerequisites
-
-- Rust 1.75+
-- PostgreSQL 15+
-- Bitcoin Core 26.0+ with ZMQ enabled
-- Docker & Docker Compose (optional)
-
-### Using Docker Compose (Recommended)
+### Docker (Recommended)
 
 ```bash
-# Clone and setup
-git clone <repo>
-cd whisper
 cp .env.example .env
-
-# Start all services
 docker-compose up -d
-
-# Check status
+open http://localhost:3000        # Dashboard
 curl http://localhost:3000/api/v1/status
 ```
 
-### Manual Setup
+### Manual
 
-1. **Setup PostgreSQL**:
+**Prerequisites:** Rust 1.75+, PostgreSQL 15+, Bitcoin Core 26.0+ with ZMQ
+
 ```bash
+# Database
 createdb whisper
 export DATABASE_URL=postgres://user:pass@localhost/whisper
-```
 
-2. **Configure Bitcoin Core** (`bitcoin.conf`):
-```ini
-regtest=1
-server=1
-rpcuser=bitcoin
-rpcpassword=password
-txindex=1
-zmqpubrawblock=tcp://127.0.0.1:28332
-```
+# Bitcoin Core (bitcoin.conf)
+# regtest=1, server=1, txindex=1
+# zmqpubrawblock=tcp://127.0.0.1:28332
 
-3. **Build and Run**:
-```bash
+# Build & Run
 cargo build --release
-cd whisper-server
-cargo run --release
+cd whisper-server && cargo run --release
 ```
 
-## API Reference
+## API
 
-### POST /api/v1/scan
+### `POST /api/v1/scan`
 
-Scan blocks for Silent Payment candidates.
+Query blocks for Silent Payment candidates by prefix.
 
-**Request**:
 ```json
+// Request
 {
   "scan_pubkey": "02a1b2c3...",
   "start_height": 100,
   "end_height": 200,
-  "prefixes": ["a1b2c3d4", "e5f6a7b8"],
-  "include_proofs": false
+  "prefixes": ["a1b2c3d4", "e5f6a7b8"]
 }
-```
 
-**Response**:
-```json
+// Response
 {
-  "candidates": [
-    {
-      "txid": "abc123...",
-      "vout": 0,
-      "amount": 100000,
-      "script_pubkey": "5120...",
-      "block_height": 150,
-      "block_hash": "000000...",
-      "timestamp": 1234567890
-    }
-  ],
-  "scanned_blocks": [100, 101, 102, ...],
+  "candidates": [{
+    "txid": "abc123...",
+    "vout": 0,
+    "amount": 100000,
+    "script_pubkey": "5120...",
+    "block_height": 150,
+    "block_hash": "000000...",
+    "timestamp": 1234567890
+  }],
+  "scanned_blocks": [100, 101, ...],
   "server_time_ms": 45
 }
 ```
 
-### GET /api/v1/status
+### `GET /api/v1/status`
 
-Get server status and tip height.
-
-**Response**:
 ```json
 {
   "status": "ok",
+  "version": "0.1.0",
   "tip_height": 12345,
-  "network": "regtest"
+  "total_outputs": 98765,
+  "total_blocks": 12345,
+  "network": "regtest",
+  "uptime_seconds": 3600
 }
 ```
 
-## Client Usage
+## Client Library
 
 ```rust
 use whisper_client::SilentPaymentClient;
 use whisper_core::{ScanKey, InputData};
-use bitcoin::secp256k1::{SecretKey, PublicKey};
 
-#[tokio::main]
-async fn main() {
-    // Setup keys
-    let scan_secret = SecretKey::from_slice(&[1u8; 32]).unwrap();
-    let scan_key = ScanKey::new(scan_secret).unwrap();
-    let spend_pubkey = scan_key.public;
-    
-    // Create client
-    let client = SilentPaymentClient::new(
-        "http://localhost:3000".into(),
-        scan_key,
-        spend_pubkey,
-        10, // max label
-    );
-    
-    // Scan for payments
-    let inputs = vec![/* InputData from transaction */];
-    let results = client.scan_range(100, 200, &inputs).await.unwrap();
-    
-    for result in results {
-        println!("Found payment: {} sats", result.amount);
-    }
+let scan_key = ScanKey::from_slice(&secret_bytes)?;
+let client = SilentPaymentClient::new(
+    "http://localhost:3000".into(),
+    scan_key, spend_pubkey, 10,
+);
+
+let results = client.scan_range(100, 200, &inputs).await?;
+for r in results {
+    println!("Payment: {} sats (label: {:?})", r.amount, r.label);
 }
+```
+
+## Project Structure
+
+```
+whisper/
+├── whisper-core/           # BIP-352 cryptographic library
+│   └── src/lib.rs          # ECDH, tagged hashes, output derivation
+├── whisper-server/         # Indexer & REST API
+│   ├── src/
+│   │   ├── main.rs         # Server entry, static file serving
+│   │   ├── api.rs          # REST endpoints with validation
+│   │   ├── indexer.rs      # ZMQ block ingestion with reconnect
+│   │   └── config.rs       # Environment configuration
+│   ├── migrations/         # PostgreSQL schema
+│   └── static/             # Dashboard UI
+└── whisper-client/         # Async client library
+    └── examples/           # Usage example
+```
+
+## Security
+
+| Layer | Protection |
+|-------|-----------|
+| **Crypto** | BIP-352 tagged hashes, proper ECDH (mul_tweak) |
+| **Privacy** | 4-byte prefix = 2³² anonymity set, no key leakage |
+| **API** | Input validation, block range limits, prefix count limits |
+| **Database** | Parameterized queries (sqlx), FK constraints, CHECK constraints |
+| **Server** | Configurable CORS, security headers, graceful shutdown |
+
+## Development
+
+```bash
+make build       # Build all crates
+make test        # Run all tests
+make run         # Start server
+make check       # Format + Clippy + Test
 ```
 
 ## BIP-352 Compliance
 
-This implementation follows [BIP-352](https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki) specification:
-
 - Tagged hashes: `BIP0352/SharedSecret`, `BIP0352/Outputs`
-- ECDH using secp256k1
-- X-only public keys (BIP-340)
+- ECDH using secp256k1 scalar multiplication
+- X-only public keys (BIP-340, even-Y assumption)
 - Label support (m = 1..255)
 
-## Security Considerations
+## Roadmap
 
-### Privacy Guarantees
-
-- **Prefix Size**: 4 bytes (32 bits) = 2^32 anonymity set
-- **Query Unlinkability**: Use Tor/VPN to prevent IP correlation
-- **No Key Leakage**: Server never sees scan_secret or spend_secret
-- **Forward Secrecy**: Old queries don't compromise future payments
-
-### DoS Protection
-
-- Rate limiting: 100 requests/IP/hour
-- Max prefixes per request: 1000
-- Max block range: 1000 blocks
-
-## Performance
-
-- **Indexing Speed**: 1 block/second sustained
-- **Query Latency**: p95 < 100ms for 1000 blocks
-- **Database Size**: ~100GB for 1M Taproot outputs
-
-## Testing
-
-```bash
-# Unit tests
-cargo test
-
-# Integration tests (requires regtest bitcoind)
-cargo test --test integration
-
-# Run specific test
-cargo test test_bip352_compliance
-```
-
-## Development Roadmap
-
-- [x] Phase A: Core BIP-352 implementation
-- [x] Phase B: Database schema
-- [x] Phase C: Block ingestion
-- [x] Phase D: REST API
-- [x] Phase E: Client library
-- [ ] Phase F: FFI bindings (UniFFI)
-- [ ] Phase G: Reorg handling
-- [ ] Phase H: Production deployment
-
-## Contributing
-
-Contributions welcome! Please ensure:
-
-1. All tests pass: `cargo test`
-2. Code is formatted: `cargo fmt`
-3. No clippy warnings: `cargo clippy`
-4. BIP-352 test vectors pass
+- [x] Core BIP-352 implementation
+- [x] PostgreSQL schema & indexing
+- [x] REST API with validation
+- [x] Client library with local verification
+- [x] Dashboard UI
+- [ ] FFI bindings (UniFFI for iOS/Android)
+- [ ] Automatic reorg handling
+- [ ] Production monitoring (Prometheus)
 
 ## License
 
-MIT
+MIT — See [LICENSE](LICENSE) for details.
 
-## Cryptographic Warning
-
-⚠️ **CRITICAL**: This software handles private keys and Bitcoin transactions. Audit thoroughly before production use. Any error in ECDH implementation results in total loss of funds.
-
-## References
-
-- [BIP-352: Silent Payments](https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki)
-- [BIP-340: Schnorr Signatures](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki)
-- [secp256k1 Rust Crate](https://docs.rs/secp256k1/)
-# Whisper
+> ⚠️ **Cryptographic Warning:** This software handles private keys and Bitcoin transactions. Audit thoroughly before production use.

@@ -1,16 +1,17 @@
-.PHONY: help build test run clean docker-up docker-down migrate
+.PHONY: help build test run clean docker-up docker-down example fmt clippy check
 
 help:
-	@echo "Whisper - Silent Payments Light Indexer"
+	@echo "Whisper — Silent Payments Light Indexer"
 	@echo ""
-	@echo "Available commands:"
-	@echo "  make build        - Build all crates"
-	@echo "  make test         - Run all tests"
-	@echo "  make run          - Run the server"
-	@echo "  make clean        - Clean build artifacts"
-	@echo "  make docker-up    - Start Docker services"
-	@echo "  make docker-down  - Stop Docker services"
-	@echo "  make example      - Run client example"
+	@echo "Commands:"
+	@echo "  make build        Build all crates (release)"
+	@echo "  make test         Run all tests"
+	@echo "  make run          Run the server (dashboard at http://localhost:3000)"
+	@echo "  make clean        Clean build artifacts"
+	@echo "  make docker-up    Start Docker services"
+	@echo "  make docker-down  Stop Docker services"
+	@echo "  make example      Run client example"
+	@echo "  make check        Format + Clippy + Test"
 
 build:
 	cargo build --release

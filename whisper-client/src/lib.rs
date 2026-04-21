@@ -12,6 +12,8 @@ pub enum ClientError {
     Core(#[from] CoreError),
     #[error("Invalid response: {0}")]
     InvalidResponse(String),
+    #[error("Server error ({status}): {message}")]
+    ServerError { status: u16, message: String },
 }
 
 #[derive(Debug, Serialize)]
@@ -56,8 +58,13 @@ impl SilentPaymentClient {
         spend_key: XOnlyPublicKey,
         max_label: u8,
     ) -> Self {
+        let http_client = Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| Client::new());
+        
         Self {
-            http_client: Client::new(),
+            http_client,
             base_url,
             scan_key,
             spend_key,
@@ -72,6 +79,12 @@ impl SilentPaymentClient {
         end_height: u32,
         inputs: &[InputData],
     ) -> Result<Vec<ScanResult>, ClientError> {
+        if start_height > end_height {
+            return Err(ClientError::InvalidResponse(
+                "start_height must be <= end_height".into()
+            ));
+        }
+        
         // Compute prefixes for these inputs
         let prefixes = compute_prefixes(
             &self.scan_key,
@@ -96,13 +109,23 @@ impl SilentPaymentClient {
         };
         
         let url = format!("{}/api/v1/scan", self.base_url);
-        let response = self.http_client
+        let http_response = self.http_client
             .post(&url)
             .json(&request)
             .send()
-            .await?
-            .json::<ScanResponse>()
             .await?;
+        
+        // Check for server-side errors
+        let status = http_response.status();
+        if !status.is_success() {
+            let body = http_response.text().await.unwrap_or_default();
+            return Err(ClientError::ServerError {
+                status: status.as_u16(),
+                message: body,
+            });
+        }
+        
+        let response = http_response.json::<ScanResponse>().await?;
         
         // Verify candidates locally
         let mut results = Vec::new();
@@ -114,18 +137,27 @@ impl SilentPaymentClient {
             let script_bytes = hex::decode(&candidate.script_pubkey)
                 .map_err(|e| ClientError::InvalidResponse(e.to_string()))?;
             
-            if let Some(mut scan_result) = self.scan_key.check_output(
+            if let Some(output_match) = self.scan_key.check_output(
                 &script_bytes,
                 &self.spend_key,
                 inputs,
                 &labels,
             )? {
-                // Fill in metadata
+                // Build full ScanResult from OutputMatch + tx metadata
                 let txid_bytes = hex::decode(&candidate.txid)
                     .map_err(|e| ClientError::InvalidResponse(e.to_string()))?;
-                scan_result.txid.copy_from_slice(&txid_bytes);
-                scan_result.vout = candidate.vout as u32;
-                scan_result.amount = candidate.amount as u64;
+                
+                let mut txid = [0u8; 32];
+                if txid_bytes.len() == 32 {
+                    txid.copy_from_slice(&txid_bytes);
+                }
+                
+                let scan_result = ScanResult::from_match(
+                    &output_match,
+                    txid,
+                    candidate.vout as u32,
+                    candidate.amount as u64,
+                );
                 
                 results.push(scan_result);
             }
@@ -140,10 +172,19 @@ impl SilentPaymentClient {
         let response = self.http_client
             .get(&url)
             .send()
-            .await?
-            .json::<ServerStatus>()
             .await?;
-        Ok(response)
+        
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ClientError::ServerError {
+                status: status.as_u16(),
+                message: body,
+            });
+        }
+        
+        let server_status = response.json::<ServerStatus>().await?;
+        Ok(server_status)
     }
 }
 
@@ -152,6 +193,14 @@ pub struct ServerStatus {
     pub status: String,
     pub tip_height: i32,
     pub network: String,
+    #[serde(default)]
+    pub total_outputs: i64,
+    #[serde(default)]
+    pub total_blocks: i64,
+    #[serde(default)]
+    pub uptime_seconds: u64,
+    #[serde(default)]
+    pub version: String,
 }
 
 #[cfg(test)]
