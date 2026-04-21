@@ -25,3 +25,12 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Audit output
+audit_results_*/
