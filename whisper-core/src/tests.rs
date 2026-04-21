@@ -48,6 +48,10 @@ fn test_shared_secret_computation() {
     // Compute shared secret
     let shared_secret = scan_key.compute_shared_secret(&inputs).unwrap();
     assert_eq!(shared_secret.len(), 32);
+    
+    // Shared secret must be deterministic
+    let shared_secret2 = scan_key.compute_shared_secret(&inputs).unwrap();
+    assert_eq!(shared_secret, shared_secret2);
 }
 
 #[test]
@@ -75,6 +79,10 @@ fn test_output_derivation() {
     let output_pubkey = scan_key.derive_output_pubkey(&shared_secret, &spend_pubkey, None).unwrap();
     
     assert_eq!(output_pubkey.serialize().len(), 32);
+    
+    // Output derivation must be deterministic
+    let output_pubkey2 = scan_key.derive_output_pubkey(&shared_secret, &spend_pubkey, None).unwrap();
+    assert_eq!(output_pubkey, output_pubkey2);
 }
 
 #[test]
@@ -105,14 +113,14 @@ fn test_output_detection() {
     let mut script = vec![0x51, 0x20];
     script.extend_from_slice(&output_pubkey.serialize());
     
-    // Test detection
+    // Test detection — now returns OutputMatch
     let labels = vec![None];
     let result = scan_key.check_output(&script, &spend_pubkey, &inputs, &labels).unwrap();
     
     assert!(result.is_some());
-    let scan_result = result.unwrap();
-    assert_eq!(scan_result.output_pubkey, output_pubkey);
-    assert_eq!(scan_result.label, None);
+    let output_match = result.unwrap();
+    assert_eq!(output_match.output_pubkey, output_pubkey);
+    assert_eq!(output_match.label, None);
 }
 
 #[test]
@@ -149,8 +157,8 @@ fn test_labeled_output() {
     let result = scan_key.check_output(&script, &spend_pubkey, &inputs, &labels).unwrap();
     
     assert!(result.is_some());
-    let scan_result = result.unwrap();
-    assert_eq!(scan_result.label, Some(5));
+    let output_match = result.unwrap();
+    assert_eq!(output_match.label, Some(5));
 }
 
 #[test]
@@ -208,4 +216,39 @@ fn test_invalid_script_rejection() {
     let result = scan_key.check_output(&invalid_script, &spend_pubkey, &inputs, &labels).unwrap();
     
     assert!(result.is_none());
+}
+
+#[test]
+fn test_scan_result_from_match() {
+    let secp = Secp256k1::new();
+    
+    let scan_secret = SecretKey::from_slice(&[20u8; 32]).unwrap();
+    let scan_key = ScanKey::new(scan_secret).unwrap();
+    
+    let spend_secret = SecretKey::from_slice(&[21u8; 32]).unwrap();
+    let spend_pubkey = PublicKey::from_secret_key(&secp, &spend_secret).x_only_public_key().0;
+    
+    let input_pubkey = PublicKey::from_secret_key(&secp, &SecretKey::from_slice(&[22u8; 32]).unwrap());
+    let inputs = vec![InputData { pubkey: input_pubkey, is_taproot: true }];
+    
+    let shared_secret = scan_key.compute_shared_secret(&inputs).unwrap();
+    let output_pubkey = scan_key.derive_output_pubkey(&shared_secret, &spend_pubkey, None).unwrap();
+    
+    let mut script = vec![0x51, 0x20];
+    script.extend_from_slice(&output_pubkey.serialize());
+    
+    let labels = vec![None];
+    let output_match = scan_key.check_output(&script, &spend_pubkey, &inputs, &labels)
+        .unwrap()
+        .expect("Should detect own output");
+    
+    // Build ScanResult from match
+    let txid = [0xABu8; 32];
+    let scan_result = ScanResult::from_match(&output_match, txid, 1, 50000);
+    
+    assert_eq!(scan_result.txid, txid);
+    assert_eq!(scan_result.vout, 1);
+    assert_eq!(scan_result.amount, 50000);
+    assert_eq!(scan_result.label, None);
+    assert_eq!(scan_result.output_pubkey, output_pubkey);
 }
