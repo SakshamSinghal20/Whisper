@@ -77,7 +77,16 @@ pub struct InputData {
     pub is_taproot: bool,
 }
 
-/// Result of scanning one output
+/// Intermediate result from output checking — contains only
+/// the cryptographically derived fields. Caller fills tx metadata.
+#[derive(Debug, Clone)]
+pub struct OutputMatch {
+    pub label: Option<u8>,
+    pub tweak: [u8; 32],
+    pub output_pubkey: XOnlyPublicKey,
+}
+
+/// Full result of scanning one output (includes tx metadata)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanResult {
     pub txid: [u8; 32],
@@ -88,8 +97,25 @@ pub struct ScanResult {
     pub output_pubkey: XOnlyPublicKey,
 }
 
+impl ScanResult {
+    /// Construct a full ScanResult from an OutputMatch and tx metadata.
+    pub fn from_match(m: &OutputMatch, txid: [u8; 32], vout: u32, amount: u64) -> Self {
+        Self {
+            txid,
+            vout,
+            amount,
+            label: m.label,
+            tweak: m.tweak,
+            output_pubkey: m.output_pubkey,
+        }
+    }
+}
+
 impl ScanKey {
-    /// Compute shared secret for a set of inputs per BIP-352
+    /// Compute shared secret for a set of inputs per BIP-352.
+    ///
+    /// Uses proper ECDH scalar multiplication (scan_secret * input_pubkey),
+    /// NOT public key addition.
     pub fn compute_shared_secret(&self, inputs: &[InputData]) -> Result<[u8; 32], CoreError> {
         if inputs.is_empty() {
             return Err(CoreError::InvalidInput);
@@ -99,8 +125,11 @@ impl ScanKey {
         let mut accumulated_scalar: Option<Scalar> = None;
         
         for input in inputs {
-            // ECDH: d = a * P_input
-            let shared_point = input.pubkey.combine(&self.secret)
+            // FIX: Use mul_tweak for proper ECDH (secret * Pubkey),
+            // not combine() which was incorrectly adding two public keys.
+            let scalar = Scalar::from_be_bytes(self.secret.secret_bytes())
+                .map_err(|_| CoreError::CryptoError("Invalid secret scalar".into()))?;
+            let shared_point = input.pubkey.mul_tweak(&secp, &scalar)
                 .map_err(|e| CoreError::CryptoError(e.to_string()))?;
             
             // Extract x-coordinate
@@ -157,14 +186,15 @@ impl ScanKey {
         Ok(output_pk.x_only_public_key().0)
     }
     
-    /// Check if a candidate output belongs to us
+    /// Check if a candidate output belongs to us.
+    /// Returns an `OutputMatch` (without tx metadata) if the output matches.
     pub fn check_output(
         &self,
         candidate_script_pubkey: &[u8],
         spend_pubkey: &XOnlyPublicKey,
         inputs: &[InputData],
         labels: &[Option<u8>],
-    ) -> Result<Option<ScanResult>, CoreError> {
+    ) -> Result<Option<OutputMatch>, CoreError> {
         // Verify it's a Taproot output (0x5120 + 32 bytes)
         if candidate_script_pubkey.len() != 34 
             || candidate_script_pubkey[0] != 0x51 
@@ -197,10 +227,7 @@ impl ScanKey {
                     }
                 };
                 
-                return Ok(Some(ScanResult {
-                    txid: [0u8; 32], // Filled by caller
-                    vout: 0,
-                    amount: 0,
+                return Ok(Some(OutputMatch {
                     label,
                     tweak,
                     output_pubkey: candidate_xonly,
