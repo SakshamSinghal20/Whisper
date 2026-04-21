@@ -16,18 +16,70 @@ pub enum IndexerError {
     Rpc(#[from] bitcoincore_rpc::Error),
 }
 
+/// Maximum number of consecutive reconnection attempts before backing off.
+const MAX_RECONNECT_ATTEMPTS: u32 = 10;
+/// Base delay between reconnection attempts (doubles each time).
+const BASE_RECONNECT_DELAY_MS: u64 = 1000;
+
 pub async fn run_indexer(state: AppState) -> Result<(), IndexerError> {
     tracing::info!("Starting block indexer...");
     
+    let mut attempt = 0u32;
+    
+    loop {
+        match run_zmq_loop(&state).await {
+            Ok(()) => {
+                // Clean exit (shouldn't happen normally)
+                tracing::info!("Indexer loop exited cleanly");
+                return Ok(());
+            }
+            Err(e) => {
+                attempt += 1;
+                let delay = std::cmp::min(
+                    BASE_RECONNECT_DELAY_MS * 2u64.pow(attempt.min(MAX_RECONNECT_ATTEMPTS)),
+                    60_000, // Cap at 60 seconds
+                );
+                
+                tracing::error!(
+                    "Indexer error (attempt {}): {}. Retrying in {}ms...",
+                    attempt, e, delay
+                );
+                
+                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                
+                // Reset attempt counter after successful longer run
+                if attempt > MAX_RECONNECT_ATTEMPTS {
+                    tracing::warn!("Max reconnection attempts reached, resetting counter");
+                    attempt = 0;
+                }
+            }
+        }
+    }
+}
+
+async fn run_zmq_loop(state: &AppState) -> Result<(), IndexerError> {
     let ctx = zmq::Context::new();
     let socket = ctx.socket(zmq::SUB)?;
     socket.connect(&state.config.zmq_socket)?;
     socket.set_subscribe(b"rawblock")?;
+    // Set receive timeout to detect dead connections
+    socket.set_rcvtimeo(30_000)?;
     
     tracing::info!("Connected to ZMQ: {}", state.config.zmq_socket);
     
     loop {
-        let msg = socket.recv_multipart(0)?;
+        let msg = match socket.recv_multipart(0) {
+            Ok(msg) => msg,
+            Err(zmq::Error::EAGAIN) => {
+                // Timeout — no block received in 30s, that's normal. Continue.
+                continue;
+            }
+            Err(e) => {
+                tracing::error!("ZMQ receive error: {}", e);
+                return Err(IndexerError::Zmq(e));
+            }
+        };
+        
         if msg.len() < 2 {
             continue;
         }
@@ -81,7 +133,7 @@ async fn process_block(db: &PgPool, block: &Block) -> Result<(), IndexerError> {
     }
     
     tx.commit().await?;
-    tracing::info!("Block {} indexed successfully", height);
+    tracing::info!("Block {} indexed successfully ({} txs)", height, block.txdata.len());
     
     Ok(())
 }
@@ -130,7 +182,7 @@ async fn process_output(
     if script.len() == 34 && script[0] == 0x51 && script[1] == 0x20 {
         let x_only_bytes = &script[2..34];
         
-        // Compute 4-byte prefix
+        // Compute 4-byte prefix (same wrapping semantics as API parsing)
         let prefix = i32::from_be_bytes([
             x_only_bytes[0],
             x_only_bytes[1],
