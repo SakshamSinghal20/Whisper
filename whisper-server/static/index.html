@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Whisper — BIP-352 Silent Payments Light Indexer Dashboard">
+    <meta name="theme-color" content="#0a0a0f">
+    <title>Whisper — Silent Payments Indexer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◉</text></svg>">
+</head>
+<body>
+    <!-- Ambient glow effects -->
+    <div class="ambient-glow ambient-glow--1"></div>
+    <div class="ambient-glow ambient-glow--2"></div>
+
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header__brand">
+                <div class="header__logo">
+                    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                        <circle cx="14" cy="14" r="12" stroke="url(#logo-grad)" stroke-width="2" fill="none" opacity="0.6"/>
+                        <circle cx="14" cy="14" r="6" fill="url(#logo-grad)" opacity="0.8"/>
+                        <defs>
+                            <linearGradient id="logo-grad" x1="0" y1="0" x2="28" y2="28">
+                                <stop offset="0%" stop-color="#6366f1"/>
+                                <stop offset="100%" stop-color="#8b5cf6"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+                <div class="header__text">
+                    <h1 class="header__title">WHISPER</h1>
+                    <p class="header__subtitle">Silent Payments Light Indexer</p>
+                </div>
+            </div>
+            <div class="header__badges">
+                <span class="badge badge--network" id="network-badge">regtest</span>
+                <span class="badge badge--version" id="version-badge">v0.1.0</span>
+                <span class="badge badge--status" id="status-badge">
+                    <span class="pulse"></span>
+                    connecting
+                </span>
+            </div>
+        </header>
+
+        <!-- Stats Cards -->
+        <section class="stats" id="stats-section">
+            <div class="stat-card">
+                <div class="stat-card__icon">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <rect x="2" y="10" width="4" height="8" rx="1" fill="currentColor" opacity="0.4"/>
+                        <rect x="8" y="6" width="4" height="12" rx="1" fill="currentColor" opacity="0.6"/>
+                        <rect x="14" y="2" width="4" height="16" rx="1" fill="currentColor"/>
+                    </svg>
+                </div>
+                <div class="stat-card__content">
+                    <span class="stat-card__label">Tip Height</span>
+                    <span class="stat-card__value" id="tip-height">—</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card__icon">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                        <path d="M10 6v4l3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                </div>
+                <div class="stat-card__content">
+                    <span class="stat-card__label">Total Outputs</span>
+                    <span class="stat-card__value" id="total-outputs">—</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card__icon">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <rect x="3" y="3" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                        <path d="M3 8h14" stroke="currentColor" stroke-width="1.5"/>
+                        <path d="M8 8v9" stroke="currentColor" stroke-width="1.5"/>
+                    </svg>
+                </div>
+                <div class="stat-card__content">
+                    <span class="stat-card__label">Indexed Blocks</span>
+                    <span class="stat-card__value" id="total-blocks">—</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card__icon">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M10 2v16M2 10h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+                        <path d="M10 2a8 8 0 0 1 8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </div>
+                <div class="stat-card__content">
+                    <span class="stat-card__label">Uptime</span>
+                    <span class="stat-card__value" id="uptime">—</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Content Grid -->
+        <div class="content-grid">
+            <!-- Server Status Panel -->
+            <section class="panel panel--status">
+                <div class="panel__header">
+                    <h2 class="panel__title">Server Status</h2>
+                    <span class="panel__refresh" id="last-refresh">Updated just now</span>
+                </div>
+                <div class="panel__body">
+                    <div class="status-row">
+                        <span class="status-dot status-dot--pending" id="db-dot"></span>
+                        <span class="status-row__label">Database</span>
+                        <span class="status-row__value" id="db-status">Checking...</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-dot status-dot--pending" id="indexer-dot"></span>
+                        <span class="status-row__label">Indexer</span>
+                        <span class="status-row__value" id="indexer-status">Checking...</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-dot status-dot--pending" id="api-dot"></span>
+                        <span class="status-row__label">API</span>
+                        <span class="status-row__value" id="api-status">Checking...</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-dot status-dot--info" id="network-dot"></span>
+                        <span class="status-row__label">Network</span>
+                        <span class="status-row__value" id="network-value">—</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- API Explorer Panel -->
+            <section class="panel panel--explorer">
+                <div class="panel__header">
+                    <h2 class="panel__title">API Explorer</h2>
+                </div>
+                <div class="panel__body">
+                    <div class="explorer-controls">
+                        <div class="field-row">
+                            <label class="field-label">Method</label>
+                            <select class="field-select" id="api-method">
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                            </select>
+                        </div>
+                        <div class="field-row">
+                            <label class="field-label">Endpoint</label>
+                            <select class="field-select" id="api-endpoint">
+                                <option value="/api/v1/status" data-method="GET">/api/v1/status</option>
+                                <option value="/api/v1/scan" data-method="POST">/api/v1/scan</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="field-row" id="body-row" style="display: none;">
+                        <label class="field-label">Request Body</label>
+                        <textarea class="field-textarea" id="api-body" rows="6" spellcheck="false">{
+  "scan_pubkey": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "start_height": 0,
+  "end_height": 100,
+  "prefixes": ["a1b2c3d4"]
+}</textarea>
+                    </div>
+
+                    <button class="btn btn--primary" id="send-btn">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <path d="M1 7h12M8 2l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Send Request
+                    </button>
+
+                    <div class="response-box" id="response-box" style="display: none;">
+                        <div class="response-box__header">
+                            <span class="response-box__status" id="response-status"></span>
+                            <span class="response-box__time" id="response-time"></span>
+                        </div>
+                        <pre class="response-box__body" id="response-body"></pre>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Architecture Diagram -->
+        <section class="panel panel--arch">
+            <div class="panel__header">
+                <h2 class="panel__title">Architecture</h2>
+            </div>
+            <div class="panel__body arch-diagram">
+                <div class="arch-node arch-node--client">
+                    <div class="arch-node__icon">📱</div>
+                    <div class="arch-node__label">Client</div>
+                    <div class="arch-node__sub">ECDH · Prefix · Verify</div>
+                </div>
+                <div class="arch-arrow">
+                    <svg width="60" height="24" viewBox="0 0 60 24">
+                        <path d="M0 12h50M45 6l8 6-8 6" stroke="var(--accent)" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span class="arch-arrow__label">HTTPS</span>
+                </div>
+                <div class="arch-node arch-node--server">
+                    <div class="arch-node__icon">⚡</div>
+                    <div class="arch-node__label">Whisper</div>
+                    <div class="arch-node__sub">Axum · PostgreSQL</div>
+                </div>
+                <div class="arch-arrow">
+                    <svg width="60" height="24" viewBox="0 0 60 24">
+                        <path d="M0 12h50M45 6l8 6-8 6" stroke="var(--accent)" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span class="arch-arrow__label">ZMQ</span>
+                </div>
+                <div class="arch-node arch-node--bitcoin">
+                    <div class="arch-node__icon">₿</div>
+                    <div class="arch-node__label">Bitcoin Core</div>
+                    <div class="arch-node__sub">Blocks · Taproot</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <span>Whisper v0.1.0</span>
+            <span class="footer__sep">·</span>
+            <span>MIT License</span>
+            <span class="footer__sep">·</span>
+            <span>BIP-352 Silent Payments</span>
+            <span class="footer__sep">·</span>
+            <a href="https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki" target="_blank" rel="noopener" class="footer__link">Specification ↗</a>
+        </footer>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
