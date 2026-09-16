@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#071018" />
+    <meta
+      name="description"
+      content="Whisper indexer: chain coverage, service health, and a query workspace."
+    />
+    <title>Whisper · Index overview</title>
+    <link rel="icon" href="/assets/mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/style.css" />
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <div class="wallpaper" aria-hidden="true">
+      <svg
+        class="orbital-field"
+        viewBox="0 0 1600 1000"
+        preserveAspectRatio="xMidYMid slice"
+        focusable="false"
+      >
+        <g class="orbit-system">
+          <g transform="translate(1240 230) rotate(-28)">
+            <ellipse class="orbit" rx="570" ry="200" />
+            <ellipse class="orbit" rx="520" ry="250" />
+            <ellipse class="orbit" rx="470" ry="300" />
+            <ellipse class="orbit" rx="420" ry="350" />
+            <ellipse class="orbit orbit-inner" rx="370" ry="400" />
+            <ellipse class="orbit-signal" rx="570" ry="200" pathLength="1000" />
+            <ellipse
+              class="orbit-signal signal-secondary"
+              rx="470"
+              ry="300"
+              pathLength="1000"
+            />
+          </g>
+        </g>
+        <g class="orbit-distant" transform="translate(40 1050) rotate(24)">
+          <ellipse class="orbit" rx="580" ry="280" />
+          <ellipse class="orbit" rx="530" ry="330" />
+          <ellipse class="orbit" rx="480" ry="380" />
+          <ellipse
+            class="orbit-signal signal-secondary"
+            rx="530"
+            ry="330"
+            pathLength="1000"
+          />
+        </g>
+      </svg>
+    </div>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Whisper home"
+        ><img src="/assets/mark.svg" width="32" height="32" alt="" /><span
+          >whisper<span class="brand-dot">.</span></span
+        ></a
+      >
+      <nav aria-label="Main navigation">
+        <a href="#main" aria-current="page">Overview</a
+        ><a href="#explorer">API explorer</a
+        ><a href="/openapi.json" target="_blank" rel="noopener"
+          >API schema <span aria-hidden="true">↗</span></a
+        >
+      </nav>
+      <div class="appearance-controls">
+        <button
+          id="wallpaper-toggle"
+          class="wallpaper-toggle"
+          type="button"
+          aria-pressed="true"
+          hidden
+        >
+          <svg
+            viewBox="0 0 20 20"
+            width="18"
+            height="18"
+            fill="none"
+            aria-hidden="true"
+          >
+            <ellipse
+              cx="10"
+              cy="10"
+              rx="9"
+              ry="4"
+              transform="rotate(-35 10 10)"
+              stroke="currentColor"
+              stroke-width="1.3"
+            />
+            <circle cx="10" cy="10" r="2" fill="currentColor" />
+          </svg>
+          <span id="wallpaper-label">Live wallpaper</span>
+          <span class="toggle-track" aria-hidden="true"></span>
+        </button>
+        <span class="network" id="network">Network unknown</span>
+      </div>
+    </header>
+    <main id="main" class="workspace">
+      <div class="page-heading">
+        <div>
+          <h1>Index overview</h1>
+          <p>Follow the chain. Keep your scanning keys local.</p>
+        </div>
+        <div class="refresh-controls">
+          <span id="freshness">Waiting for first update</span
+          ><button id="pause" class="button button-quiet" aria-pressed="false">
+            Pause updates</button
+          ><button id="refresh" class="button button-secondary">Refresh</button>
+        </div>
+      </div>
+
+      <div id="notice" class="notice" role="status" hidden>
+        <span class="notice-icon" aria-hidden="true">!</span>
+        <div>
+          <strong id="notice-title"></strong>
+          <p id="notice-message"></p>
+        </div>
+        <a href="#setup">Connection help</a>
+      </div>
+
+      <section class="metrics" aria-label="Index statistics">
+        <div class="metric">
+          <span class="metric-label">Indexed tip</span
+          ><strong id="tip">—</strong
+          ><span class="metric-note" id="node-tip">Node tip unavailable</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Taproot outputs</span
+          ><strong id="output-count">—</strong
+          ><span class="metric-note"
+            >Candidates, before local verification</span
+          >
+        </div>
+        <div class="metric">
+          <span class="metric-label">Indexed blocks</span
+          ><strong id="block-count">—</strong
+          ><span class="metric-note" id="coverage">No coverage confirmed</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Server uptime</span
+          ><strong id="uptime">—</strong
+          ><span class="metric-note" id="version">Version unavailable</span>
+        </div>
+      </section>
+
+      <div class="overview-grid">
+        <section class="panel recent-panel" aria-labelledby="blocks-title">
+          <div class="panel-heading">
+            <h2 id="blocks-title">Recent blocks</h2>
+            <span class="subtle">Canonical chain</span>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <caption class="sr-only">
+                The six most recently indexed blocks
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Height</th>
+                  <th scope="col">Block hash</th>
+                  <th scope="col" class="numeric">Outputs</th>
+                  <th scope="col" class="numeric">Block time</th>
+                </tr>
+              </thead>
+              <tbody id="blocks-body">
+                <tr>
+                  <td colspan="4" class="empty-cell">
+                    <strong>Loading the index…</strong
+                    ><span>Checking for indexed blocks.</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="panel-foot">
+            <span class="dot" aria-hidden="true"></span>Only committed blocks
+            appear here.<span id="blocks-note"></span>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="services-title">
+          <div class="panel-heading">
+            <h2 id="services-title">Connections</h2>
+            <span class="status-tag" id="overall">Checking</span>
+          </div>
+          <dl class="connections">
+            <div>
+              <dt>
+                <span class="service-mark" aria-hidden="true">W</span>Whisper
+                API
+              </dt>
+              <dd id="api-state">Checking</dd>
+            </div>
+            <div>
+              <dt>
+                <span class="service-mark" aria-hidden="true">D</span>Database
+              </dt>
+              <dd id="db-state">Checking</dd>
+            </div>
+            <div>
+              <dt>
+                <span class="service-mark" aria-hidden="true">B</span>Bitcoin
+                Core
+              </dt>
+              <dd id="rpc-state">Checking</dd>
+            </div>
+            <div>
+              <dt>
+                <span class="service-mark" aria-hidden="true">I</span>Block
+                indexer
+              </dt>
+              <dd id="indexer-state">Checking</dd>
+            </div>
+          </dl>
+          <div class="connection-note" id="connection-note">
+            The API checks the index every five seconds.
+          </div>
+        </section>
+      </div>
+
+      <section
+        id="explorer"
+        class="panel explorer"
+        aria-labelledby="explorer-title"
+      >
+        <div class="panel-heading">
+          <div>
+            <h2 id="explorer-title">API explorer</h2>
+            <p>Inspect the index with a read-only request.</p>
+          </div>
+          <span class="subtle">/api/v1</span>
+        </div>
+        <div class="explorer-grid">
+          <form id="request-form" novalidate>
+            <label for="endpoint">Endpoint</label>
+            <div class="endpoint-control">
+              <span id="method" class="method">GET</span
+              ><select id="endpoint">
+                <option value="status">Server status</option>
+                <option value="blocks">Recent blocks</option>
+                <option value="scan">Find outputs by prefix</option>
+                <option value="transactions">Scan transaction data</option>
+              </select>
+            </div>
+            <p id="endpoint-help" class="field-help">
+              Service health, chain coverage, and configured limits.
+            </p>
+            <div id="range-fields" class="range-fields" hidden>
+              <div>
+                <label for="start-height">Start height</label
+                ><input
+                  id="start-height"
+                  type="number"
+                  min="0"
+                  max="2147483647"
+                  step="1"
+                  value="0"
+                  inputmode="numeric"
+                />
+              </div>
+              <div>
+                <label for="end-height"
+                  >End height <span class="subtle">(inclusive)</span></label
+                ><input
+                  id="end-height"
+                  type="number"
+                  min="0"
+                  max="2147483647"
+                  step="1"
+                  value="0"
+                  inputmode="numeric"
+                />
+              </div>
+            </div>
+            <div id="prefix-field" hidden>
+              <label for="prefixes">Output prefixes</label
+              ><textarea
+                id="prefixes"
+                rows="3"
+                placeholder="a1b2c3d4, e5f6a7b8"
+                spellcheck="false"
+                autocapitalize="off"
+                aria-describedby="prefix-help form-error"
+              ></textarea>
+              <p id="prefix-help" class="field-help">
+                Eight hex characters per prefix. Separate with commas or spaces.
+                Never enter a private key.
+              </p>
+            </div>
+            <div class="request-preview">
+              <span id="request-path">GET /api/v1/status</span
+              ><button class="text-button" type="button" id="copy-request">
+                Copy cURL
+              </button>
+            </div>
+            <p id="form-error" class="form-error" role="alert" hidden></p>
+            <div class="form-actions">
+              <button id="send" type="submit" class="button button-primary">
+                Send request <span aria-hidden="true">↗</span></button
+              ><span class="keyboard-hint">Ctrl / ⌘ + Enter</span>
+            </div>
+            <p class="privacy-note">
+              Prefix matches are candidates. Verify ownership locally with your
+              scan key.
+            </p>
+          </form>
+          <div class="response-panel" aria-busy="false" id="response-panel">
+            <div class="response-toolbar">
+              <span id="response-status" role="status">Response</span>
+              <div>
+                <span id="response-time"></span
+                ><button
+                  id="copy-response"
+                  type="button"
+                  class="text-button"
+                  disabled
+                >
+                  Copy JSON
+                </button>
+              </div>
+            </div>
+            <div id="response-empty" class="response-empty">
+              <span class="code-mark" aria-hidden="true">{ }</span
+              ><strong>A clear view of your index.</strong>
+              <p>
+                Choose an endpoint and send a request.<br />The response will
+                appear here.
+              </p>
+            </div>
+            <pre
+              id="response-body"
+              tabindex="0"
+              aria-label="API response"
+              hidden
+            ></pre>
+            <div id="response-footer" class="response-footer" hidden>
+              <span id="page-info"></span
+              ><button
+                type="button"
+                id="next-page"
+                class="button button-secondary"
+                hidden
+              >
+                Next page
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <details id="setup" class="setup">
+        <summary>Connection &amp; scanning guide</summary>
+        <div class="setup-grid">
+          <div>
+            <h3>Connect Bitcoin Core</h3>
+            <p>
+              Set <code>BITCOIN_RPC_URL</code>, <code>BITCOIN_RPC_USER</code>,
+              and <code>BITCOIN_RPC_PASS</code> in <code>.env</code>. Match
+              <code>NETWORK</code> to your node, then restart Whisper.
+            </p>
+            <p>
+              Use an unpruned Bitcoin Core 26+ node for historical scanning.
+              Whisper catches up over RPC; ZMQ can wake the indexer sooner.
+            </p>
+          </div>
+          <div>
+            <h3>Read coverage before scanning</h3>
+            <p>
+              Request a range within the indexed coverage. An incomplete range
+              returns <code>409</code>, so an empty result never stands in for
+              missing blocks.
+            </p>
+            <p>
+              Keep private keys in the Python client. The index supplies public
+              transaction data; it does not prove confirmations or amounts.
+            </p>
+          </div>
+        </div>
+      </details>
+      <footer>
+        <span
+          >Whisper <span id="footer-version"></span
+          ><span class="footer-divider">/</span>Silent Payments indexer</span
+        ><a
+          href="https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki"
+          target="_blank"
+          rel="noopener noreferrer"
+          >BIP-352 specification ↗</a
+        >
+      </footer>
+    </main>
+    <div id="toast" class="toast" role="status" hidden></div>
+    <noscript
+      ><p class="notice">
+        Enable JavaScript to use the dashboard. The JSON API remains available
+        at <a href="/api/v1/status">/api/v1/status</a>.
+      </p></noscript
+    >
+  </body>
+</html>
