@@ -1,8 +1,31 @@
-# Whisper
+# Whisper: Bitcoin Silent Payments in Python
 
-A Python Bitcoin Taproot indexer, operator dashboard, and Silent Payments receiver library. FastAPI serves the API; SQLAlchemy stores the canonical chain in SQLite or PostgreSQL; the client verifies BIP-352 output ownership locally using libsecp256k1 through coincurve.
+A self-hosted BIP-352 indexer and Python receiver library for Bitcoin wallet developers. Index Taproot outputs with Bitcoin Core, then detect Silent Payments locally without sending scan keys to the server.
 
-The server never needs a scan secret or scan public key. The browser dashboard remains HTML, CSS, and JavaScript, with local assets and no external font requests.
+This project is unrelated to OpenAI's Whisper speech-recognition model.
+
+## Quick start
+
+From a clone of this repository, with Python 3.11+ and an activated virtual environment:
+
+```sh
+python -m pip install -c requirements.lock .
+python -m whisper
+```
+
+Open [the dashboard at localhost:3000](http://127.0.0.1:3000) to inspect chain coverage, service health, recent blocks, and JSON responses in the API explorer. The dashboard includes an animated orbital background with a pause toggle and reduced-motion support.
+
+To populate the index, connect an unpruned Bitcoin Core 26+ node. Whisper defaults to regtest and reports a connection error until the node is available. See [Run locally](#run-locally) for virtual-environment and node setup, or [Docker](#docker) for a Compose setup with Bitcoin Core and PostgreSQL.
+
+## Why choose Whisper?
+
+- Keep receiver keys local. The Python client checks output ownership on your machine; the server receives neither scan secrets nor scan public keys.
+- Follow the chain across interruptions. The indexer catches up after restarts, rolls back replaced blocks during reorganizations, and rejects scans over incomplete coverage.
+- Start with a small deployment. Run the API and dashboard with Python and SQLite, then use PostgreSQL when needed. You do not need a Rust compiler or a frontend build step.
+
+The receiver tests cover all 29 published BIP-352 receiving cases and their addresses. A Bitcoin Core regtest integration test mines a labeled payment and detects it through the Python client. See [validation results](VALIDATION.md) for the checks performed and [scope and trust](#scope-and-trust) for the current limits.
+
+FastAPI serves the API; SQLAlchemy stores the canonical chain in SQLite or PostgreSQL. The client uses libsecp256k1 through coincurve for ownership checks. The HTML/CSS/JavaScript dashboard serves its assets locally, including its font.
 
 ## Run locally
 
