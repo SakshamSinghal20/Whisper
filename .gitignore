@@ -1,8 +1,16 @@
-# Rust
-target/
-Cargo.lock
-**/*.rs.bk
-*.pdb
+# Python and local tooling
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+.tools/
+node_modules/
 
 # Environment
 .env
@@ -22,6 +30,9 @@ Thumbs.db
 # Database
 *.db
 *.sqlite
+*.db-shm
+*.db-wal
+*.db-journal
 
 # Logs
 *.log

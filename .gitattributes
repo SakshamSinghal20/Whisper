@@ -1,0 +1,12 @@
+* text=auto
+*.py text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.lock text eol=lf
+Makefile text eol=lf
+Dockerfile text eol=lf
+*.woff2 binary
