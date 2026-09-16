@@ -1,268 +1,52 @@
-# Whisper Project Structure
+# Architecture
 
-```
-whisper/
-├── Cargo.toml                      # Workspace configuration
-├── README.md                       # Project overview
-├── SETUP.md                        # Detailed setup guide
-├── .env.example                    # Environment template
-├── .gitignore                      # Git ignore rules
-├── docker-compose.yml              # Docker orchestration
-├── Dockerfile                      # Server container image
-├── Makefile                        # Common tasks
-├── quickstart.sh                   # Quick setup script
-│
-├── whisper-core/                   # Core cryptographic library
-│   ├── Cargo.toml
-│   └── src/
-│       ├── lib.rs                  # BIP-352 implementation
-│       └── tests.rs                # Comprehensive tests
-│
-├── whisper-server/                 # Indexer & API server
-│   ├── Cargo.toml
-│   ├── migrations/
-│   │   └── 001_initial_schema.sql  # Database schema
-│   └── src/
-│       ├── main.rs                 # Server entry point
-│       ├── api.rs                  # REST API handlers
-│       ├── indexer.rs              # Block ingestion
-│       └── config.rs               # Configuration
-│
-└── whisper-client/                 # Client library
-    ├── Cargo.toml
-    ├── examples/
-    │   └── scan_example.rs         # Usage example
-    └── src/
-        └── lib.rs                  # Client implementation
-```
+Whisper is a single-process Python service with an async receiver SDK and a static browser dashboard.
 
-## Component Descriptions
+| Module | Responsibility |
+| --- | --- |
+| `whisper/core.py` | BIP-352 input extraction, transaction tweaks, ECDH, labels, output ownership checks |
+| `whisper/address.py` | Bech32m version-0 Silent Payment addresses |
+| `whisper/client.py` | Bounded HTTP responses, pagination, local scanning, response validation |
+| `whisper/rpc.py` | Authenticated Bitcoin Core RPC, request-ID validation, exact decimal amounts |
+| `whisper/indexer.py` | Canonical-chain reconciliation, backfill, reorg recovery, optional ZMQ notifications |
+| `whisper/database.py` | SQLAlchemy schema and atomic SQLite/PostgreSQL operations |
+| `whisper/models.py` | Strict API input and client response models |
+| `whisper/server.py` | FastAPI lifespan, health, scan endpoints, static assets, error handling |
+| `whisper/config.py` | Validated environment and `.env` configuration |
+| `whisper/static/` | Responsive dashboard with service states, recent blocks, and API explorer |
 
-### whisper-core
-**Purpose**: Pure cryptographic implementation of BIP-352 Silent Payments
+## Indexing
 
-**Key Features**:
-- Tagged hash functions (BIP-352 compliant)
-- ECDH shared secret computation
-- Output derivation with label support
-- Prefix generation for privacy-preserving queries
-- No external dependencies on server/client logic
+The indexer asks Bitcoin Core for its network and canonical height. It compares the persisted tip with the node, deleting replaced blocks until it finds a common ancestor. Foreign keys cascade those deletions to transactions and outputs. It then fetches each missing block with `getblock` verbosity 3.
 
-**Public API**:
-- `ScanKey`: Scanning key pair (secret + public)
-- `SpendKey`: Spending key (public for scanning)
-- `InputData`: Transaction input metadata
-- `ScanResult`: Detected payment information
-- `compute_prefixes()`: Generate query prefixes
-- `prefix_from_xonly()`: Extract 4-byte prefix
+For transactions containing Taproot outputs, the indexer derives a public input tweak from eligible input keys and the smallest serialized outpoint. Every non-coinbase input needs a prevout, even if its key type is ineligible. Missing prevouts fail the block rather than silently omit potentially relevant payments. Amounts use Decimal-to-satoshi conversion; hashes retain Bitcoin Core's conventional display order.
 
-### whisper-server
-**Purpose**: Bitcoin block indexer and REST API server
+Each block and its outputs commit in one database transaction. Repeated delivery of the same block is idempotent. New blocks must extend the indexed chain. ZMQ only wakes reconciliation; polling recovers missed notifications and downtime. Failed synchronization retries with a capped delay. Shutdown cancels background work and closes sockets, HTTP connections, and the database pool.
 
-**Components**:
+## Storage
 
-1. **Block Indexer** (`indexer.rs`)
-   - Connects to Bitcoin Core via ZMQ
-   - Parses raw blocks in real-time
-   - Extracts Taproot outputs (0x5120 + 32 bytes)
-   - Computes 4-byte prefixes
-   - Stores in PostgreSQL
+`blocks` stores the canonical height, hash, parent hash, timestamp, and counts. `transactions` stores Taproot-bearing transaction IDs, heights, and an optional 33-byte public input tweak. `taproot_outputs` stores outpoints, integer amounts, scripts, prefixes, and heights. Ineligible transactions still contribute Taproot candidates but do not appear in the local-scanning transaction endpoint.
 
-2. **REST API** (`api.rs`)
-   - `POST /api/v1/scan`: Query outputs by prefix
-   - `GET /api/v1/status`: Server health check
-   - Rate limiting and validation
-   - CORS support
+`whisper_meta` binds the index to a schema version, network, and starting height. Startup refuses legacy Rust schemas and configuration mismatches. It does not overwrite or migrate an existing old index.
 
-3. **Database Schema** (`migrations/`)
-   - `blocks`: Block headers and reorg tracking
-   - `transactions`: Full transaction data
-   - `taproot_outputs`: Indexed SP candidates
-   - Optimized indexes for prefix queries
+An async lock gives each API query a coherent snapshot while the single indexer commits or rolls back. Run one process per database; multiple Uvicorn workers or separate writer instances are unsupported. Database constraints enforce unique heights/outpoints, foreign keys, and valid amount ranges.
 
-### whisper-client
-**Purpose**: Client library for scanning Silent Payments
+## Query consistency
 
-**Key Features**:
-- HTTP client for server queries
-- Local verification of candidates
-- Multi-label support
-- Async/await API
+Scan coverage is based on rows that exist, including blocks with no Taproot outputs. A query only succeeds when the complete inclusive range exists. Keyset pagination orders candidates by height, transaction ID, and output index, or transactions by height and transaction ID.
 
-**Usage Flow**:
-1. Create `SilentPaymentClient` with keys
-2. Provide transaction inputs
-3. Client computes prefixes locally
-4. Query server for candidates
-5. Verify matches using ECDH
-6. Return confirmed payments
+A cursor binds that position to the request parameters and the end-block hash. A reorganization invalidates it. Transaction responses also contain the previous hash at the start of the range, allowing the Python client to detect a chain change between adjacent range batches. Cursors are navigation tokens, not authorization credentials.
 
-## Data Flow
+Candidate pages obey `PAGE_SIZE`. Transaction pages contain at most 25 transactions and stop around 10,000 outputs without splitting a transaction; one large transaction can exceed that target. Client HTTP responses are capped at 32 MiB. Query bounds and 64 KiB request limits prevent unbounded ordinary requests. Production reverse proxies should apply request rate limits.
 
-### Indexing (Server-side)
-```
-Bitcoin Core (ZMQ)
-    ↓ rawblock
-Block Parser
-    ↓ extract Taproot outputs
-Prefix Computation
-    ↓ first 4 bytes of x-only pubkey
-PostgreSQL
-    ↓ indexed by (sp_prefix, block_height)
-Ready for queries
-```
+## Receiver and trust boundary
 
-### Scanning (Client-side)
-```
-Client has: scan_secret, spend_pubkey, tx_inputs
-    ↓
-Compute shared_secret = ECDH(scan_secret, inputs)
-    ↓
-Derive expected outputs (with labels)
-    ↓
-Extract 4-byte prefixes
-    ↓
-Query server: POST /scan with prefixes
-    ↓
-Server returns candidates
-    ↓
-Client verifies each candidate locally
-    ↓
-Return confirmed payments
-```
+Only the client holds the scan secret. It multiplies the public transaction tweak by that secret, derives the BIP-352 shared-secret tweaks in counter order, and tests unlabeled and labeled output keys. It always checks change label zero and stops after the first unmatched counter. Public spend keys keep their Y parity; only the final Taproot output is x-only.
 
-## Privacy Model
+The cryptographic point operations run in coincurve's libsecp256k1 backend. Python manages metadata and orchestration; it does not promise secure memory erasure. Output matching establishes ownership of an output key, not the authenticity of a server's claimed amount, transaction inclusion, confirmations, or unspent status.
 
-**Server knows**:
-- All Taproot outputs (public blockchain data)
-- Which prefixes client queries (4-byte = 2^32 anonymity set)
-- Block ranges of interest
+## Dashboard
 
-**Server does NOT know**:
-- Client's scan_secret or spend_secret
-- Which outputs actually belong to client
-- Client's full public keys (only sees prefixes)
+The dashboard uses the same API as the SDK. Polling waits for each request pair to finish, pauses in background tabs, and supports manual refresh and pause/resume. Connection failures retain and label previous metrics. The explorer derives the HTTP method from the endpoint, validates fields, supports pagination, and times out requests. Remote response content is rendered as text.
 
-**Mitigation**:
-- Use Tor/VPN for queries
-- Query multiple prefixes (including decoys)
-- Batch queries across time
-
-## Security Considerations
-
-### Cryptographic
-- ✅ BIP-352 compliant tagged hashes
-- ✅ Proper ECDH implementation
-- ✅ X-only pubkey handling (even-Y assumption)
-- ✅ Scalar arithmetic for tweak computation
-- ⚠️ Test vectors required for validation
-
-### Server
-- ✅ SQL injection prevention (sqlx compile-time checks)
-- ✅ Rate limiting (configurable)
-- ✅ Input validation (block range, prefix count)
-- ⚠️ DoS protection (proof-of-work optional)
-- ⚠️ Reorg handling (manual currently)
-
-### Database
-- ✅ Foreign key constraints
-- ✅ Unique constraints on (txid, vout)
-- ✅ Orphan block tracking
-- ⚠️ Encryption at rest (optional)
-
-## Performance Characteristics
-
-### Indexing
-- **Throughput**: 1 block/second (Bitcoin avg: 1/10min)
-- **Latency**: Real-time via ZMQ
-- **Storage**: ~100 bytes per Taproot output
-- **Scaling**: Vertical (single writer)
-
-### Queries
-- **Latency**: p95 < 100ms for 1000 blocks
-- **Throughput**: Limited by rate limiting
-- **Index**: B-tree on (sp_prefix, block_height)
-- **Scaling**: Horizontal (read replicas)
-
-### Client
-- **Computation**: O(n) where n = number of labels
-- **Bandwidth**: O(m) where m = matching outputs
-- **Memory**: Minimal (streaming verification)
-
-## Future Enhancements
-
-### Phase F: Mobile FFI
-- UniFFI bindings for iOS/Android
-- Kotlin/Swift wrappers
-- Example mobile apps
-
-### Phase G: Reorg Handling
-- Automatic fork detection
-- Chain reorganization recovery
-- Orphan block pruning
-
-### Phase H: Production Features
-- Prometheus metrics
-- Grafana dashboards
-- Automated backups
-- High availability setup
-- CDN for static filters
-
-### Additional Ideas
-- Compact block filters (BIP-157/158 integration)
-- Mempool monitoring
-- Webhook notifications
-- GraphQL API
-- Multi-network support (testnet, signet)
-- Payment proofs
-- UTXO set management
-
-## Testing Strategy
-
-### Unit Tests
-- Core cryptographic functions
-- Tagged hash correctness
-- Key derivation
-- Prefix extraction
-
-### Integration Tests
-- Full scan flow (regtest)
-- Database operations
-- API endpoints
-- ZMQ ingestion
-
-### Property Tests
-- Random key generation
-- False positive rate (1/2^32)
-- Reorg scenarios
-
-### Performance Tests
-- Query latency benchmarks
-- Indexing throughput
-- Database size growth
-
-## Deployment Checklist
-
-- [ ] Build release binaries
-- [ ] Setup PostgreSQL with backups
-- [ ] Configure Bitcoin Core (mainnet)
-- [ ] Enable SSL/TLS (nginx/caddy)
-- [ ] Setup monitoring (logs, metrics)
-- [ ] Configure firewall
-- [ ] Test disaster recovery
-- [ ] Document runbooks
-- [ ] Setup alerting
-- [ ] Load testing
-
-## Contributing Guidelines
-
-1. **Code Style**: Run `cargo fmt` before committing
-2. **Linting**: Fix all `cargo clippy` warnings
-3. **Tests**: Add tests for new features
-4. **Documentation**: Update relevant .md files
-5. **Commits**: Use conventional commits format
-6. **PRs**: Include description and test results
-
-## License
-
-MIT License - See LICENSE file for details
+Assets, including the Outfit font, ship inside the Python package. Static serving uses module-relative paths, so launching from another directory or installing a wheel does not lose the dashboard. CSP restricts resources to the service origin.

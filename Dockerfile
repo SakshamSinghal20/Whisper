@@ -1,34 +1,14 @@
-FROM rust:1.75-slim as builder
-
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOST=0.0.0.0
 WORKDIR /app
-
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    libzmq3-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy workspace files
-COPY Cargo.toml ./
-COPY whisper-core ./whisper-core
-COPY whisper-server ./whisper-server
-COPY whisper-client ./whisper-client
-
-# Build release
-RUN cargo build --release --bin whisper-server
-
-# Runtime stage
-FROM debian:bookworm-slim
-
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl3 \
-    libzmq5 \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY --from=builder /app/target/release/whisper-server /usr/local/bin/whisper-server
-
+COPY pyproject.toml requirements.lock README.md LICENSE ./
+COPY whisper ./whisper
+RUN pip install --no-cache-dir -c requirements.lock . \
+    && useradd --create-home --uid 10001 whisper \
+    && mkdir /data && chown whisper:whisper /data
+USER whisper
+ENV DATABASE_URL=sqlite+aiosqlite:////data/whisper.db
 EXPOSE 3000
-
-CMD ["whisper-server"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/api/v1/blocks?limit=1', timeout=4)"
+CMD ["python", "-m", "whisper"]

@@ -1,67 +1,55 @@
-version: '3.8'
-
 services:
   postgres:
-    image: postgres:15-alpine
-    container_name: whisper-db
+    image: postgres:16-alpine
     environment:
       POSTGRES_USER: whisper
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: whisper
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+      POSTGRES_DB: whisper_python
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_python_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U whisper"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U whisper -d whisper_python"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+    restart: unless-stopped
 
   bitcoind:
-    image: btcpayserver/bitcoin:26.0
-    container_name: whisper-bitcoind
-    command: |
-      bitcoind
-      -regtest
-      -server=1
-      -rpcuser=bitcoin
-      -rpcpassword=password
-      -rpcallowip=0.0.0.0/0
-      -rpcbind=0.0.0.0
-      -txindex=1
-      -zmqpubrawblock=tcp://0.0.0.0:28332
-      -zmqpubrawtx=tcp://0.0.0.0:28333
-    ports:
-      - "18443:18443"
-      - "28332:28332"
-      - "28333:28333"
+    image: btcpayserver/bitcoin:28.1
+    command:
+      - bitcoind
+      - -regtest
+      - -server=1
+      - -rpcuser=bitcoin
+      - -rpcpassword=${BITCOIN_RPC_PASS:-local-development-only}
+      - -rpcallowip=0.0.0.0/0
+      - -rpcbind=0.0.0.0
+      - -txindex=1
+      - -zmqpubhashblock=tcp://0.0.0.0:28332
     volumes:
       - bitcoin_data:/data
+    restart: unless-stopped
 
   whisper-server:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: whisper-server
+    build: .
     environment:
-      DATABASE_URL: postgres://whisper:password@postgres/whisper
+      DATABASE_URL: postgresql+asyncpg://whisper:${POSTGRES_PASSWORD:-local-development-only}@postgres/whisper_python
       BITCOIN_RPC_URL: http://bitcoind:18443
       BITCOIN_RPC_USER: bitcoin
-      BITCOIN_RPC_PASS: password
+      BITCOIN_RPC_PASS: ${BITCOIN_RPC_PASS:-local-development-only}
       ZMQ_BLOCK_SOCKET: tcp://bitcoind:28332
       NETWORK: regtest
       HOST: 0.0.0.0
       PORT: 3000
-      RUST_LOG: info
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       postgres:
         condition: service_healthy
       bitcoind:
         condition: service_started
+    restart: unless-stopped
 
 volumes:
-  postgres_data:
+  postgres_python_data:
   bitcoin_data:

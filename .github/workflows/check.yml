@@ -1,0 +1,20 @@
+name: Checks
+on: [push, pull_request]
+jobs:
+  python:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.12', '3.13']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - run: python -m pip install -c requirements.lock -e '.[dev]'
+      - run: python -m ruff check whisper tests examples
+      - run: python -m ruff format --check whisper tests examples
+      - run: python -m pytest -q
